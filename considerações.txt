@@ -1,0 +1,22 @@
+banco.py
+-Formato wide -> long
+-Remove dias 29/fec (anos bissextos)
+
+parametros.py
+- Testes em escala anual (não diária)
+- Motivo: detectar mudanças de regime de longo prazo
+- Pettitt recursivo por rankings (evita matriz 0(n²))
+
+modelos.py - PAR(1) Diário
+- 365 períodos fixos, sem bissexto
+- Transformação log obrigatória
+- Motivo: garante valores positivos e estabiliza variância
+
+sams.py
+- Série bruta para todos os modelos (competição justa)
+- ARMA é melhor para não sazonal, PARMA para sazonal, GAR para semiário gosta das caudas
+- ARMA: p=0.3, q=0.3 - orgens maiores ganham <0.003% no AIC
+- GAR: mantido por completudo, esperando não vencer no Iguaçu
+- PARMA: série bruta, captura sazonalidade internamente
+- Critério: AIC (menos pragmática, prioriza ajsute)
+- Paralelização dos 3 modelos simultaneamente

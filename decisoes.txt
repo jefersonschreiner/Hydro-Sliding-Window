@@ -1,0 +1,196 @@
+DOCUMENTO DE DECISÕES
+
+Projeto: Análise de Não-Estacionariedade e Atualização de Modelos Hidrológicos
+
+1. CONTEXTO GERAL
+Objetivo: Avaliar diferentes estratégias de atualização de Modelos
+Hidrológicos estocásticos para a simulação da operação da UHE Gov.
+Bento Munhoz (Foz do Areia), identificando as discrepâncias entre as
+abordagens e estabelecendo indicadores de qualidade de atualização.
+
+Série Histórica: 1931-2023 (93 anos de dados diários de vazões)
+
+Ano de Corte (1975): Adotado por ser o ano de inauguração da UHE
+Salto Osório, primeira usina da bacia, capaz de alterar o comportamento
+hidrológico do curso principal.
+
+Ano de início (1931): Primeiro ano completo de dados disponíveis na
+estação
+
+2. ESTRUTURA DE ARQUIVOS
+
+projeto/
+├── main.py               # Orquestrador geral
+├── dados/
+│   └── Banco.csv
+├── modulos/
+│   ├── banco.py          # Leitura e organização dos dados
+│   ├── parametros.py     # Testes de não-estacionariedade
+│   ├── modelos.py        # Geração dos modelos (ARMA/GAR/PARMA)
+│   ├── sams.py           # Seleção automática de modelo (ARMA/GAR/PARMA)
+│   ├── metodologias.py   # Geração dos 7 bancos de dados (MFB/MOF/MJD)
+│   └── figuras.py        # Gráficos de timeline das estratégias
+└── resultados/           # CSVs gerados pelo programa
+
+Padrão de nomeclatura
+├── Classes: Singular, PascalCase
+├── Funções: Imperativo, camelCase
+├── Variáveis: Descritivas, snake_case minúsculo
+
+3. BANCO.PY - Leitura e Organização dos dados
+Formato de entrada: CSV com seprador ; e decimal ,
+Coluna Data: mês/ano de referência no formato dd/mm/yyyy
+Colunas Vazao01 a Vazao31: vazão de cada dia do mês
+
+├── Decisão - Transformação wide -> long: O banco original armazena um mês por
+linha com os dias nas colunas. A função carregar() transforma para uma linha
+por dia com colunas ['data', 'vazao'], ordenada cronologicamente do mais 
+antigo para o mais recente
+
+├── Decisão - Tratamento de dias inválidos: Dias inexistentes (ex: 31 de abril)
+são ignorados via try/except ValueError ao constuir o pd.timestamp.
+
+3.1 Funções
+
+├── carregar(caminho_arq) -> DataFrame diário completo
+├── periodo(df, ano_inicio, ano_fim) -> Recorta uma janela de dados
+
+4. PARAMETROS.PY - Análise de Não-Estacionariedade
+
+4.1 - Escala temporal dos Testes
+Decisão: Usar médias anuais(não diarias): os testes de estacionariedade são
+aplicados sobre 93 médias anuais (1931-2023), não sobre a série diários de 
+~34.000 pontos.
+
+Motivo: A hipótese do trabalho é sobre não-estacionariedade de longo prazo
+(mudanças climáticas e antrópicas), não sobre variações sazonais intra-anuais
+aplicar os testes na série diária dectetaria variações sazoanis normais como
+quebras, gerando ruído em vez de sinal. A escala anual captura mudanças de regime
+de décadas, que é o fenômeno de interesse. Esta decisão foi validade pelos
+resultados: Mann-Kendall e Sperman significativos, Pettitt detectando uma quebras
+em 1968
+
+Motivo técnico adicional: A série diária (~34.000 pontos) causou estouro da mémoria
+(4,3 GB) na implementação matricial do Pettitt via pymannkendall
+
+4.2 - Testes implementados
+Mann-Kendall: Detecta tendência monotônica (crescente ou decrescente). Usa na
+biblioteca pymannkendall - Critério: p-valor < 0.05
+
+Spearman Rho: Avalia correlação monotônica entre ordem cronológica e vazão,
+complementar ao Mann-Kendall - Critério: p-valor < 0.05
+
+Pettitt - Implementação por rankings (decisão técnica):
+Problema: A formulação clássica do Pettitt cria implicitamente uma matriz de
+comparações O(n²). Para n=34.000 pontos diários, isso demandou 4,3GB de RAM
+
+Solução: Implementação por rankins incrimentais
+    1. Cada observação recebe seu rank dentro do segmento (1 a n)
+    2. A estatística U é calculada de forma incremental: u[t] = u[t-1] + (2*rank[t] - n - 1)
+    3. Matematicamente equivalente à formulação original (o Pettitt e não-paramétrico
+    baseado na ordem relativa dos valores, não nos valores absolutos)
+    4. Elimina a necessidade de matriz de comparações -> memória O(n) em vez de O(n²)
+
+Pettitt recursivo (múltiplas quebras): Após detectar uma quebra, a série é dividida
+nos dois subsegmentos e o teste é reaplicado em cada um recursivamente, até não
+encontrar mais quebras significativas. Retorna lista ordenada cronologicamente com
+todas as quebras encontradas - Critério de parada: segmento com menos de 4 pontos
+ou p-valor >= 0.05
+
+4.3 Lógica de parada
+Decisão: Se os três testes indicam estacionariedade (nenhum significativo), o programa
+para e notifica. A metodologia de janelas deslizantes não se aplica a séries estacionárias,
+ou seja, se a série fosse estacionária, atualizar ou não o modelo daria na mesma.
+
+5. MODELOS.PY 
+
+6. METODOLOGIAS.PY - Geração dos 7 Bancos de dados
+
+6.1 Os 7 bancos
+
+#num - Modelo - Frequência - Calibração Inicial - Simulação
+
+1 - MFB - Sem freq. - 1931-1975 (fixo) - 1976-2023 (uma vez)
+2 - MOF - Anual - 1931 -1975 crecendo - 1 ano de cada vez
+3 - MOF - 5 anos - 1931 -1975 crecendo - 5 anos de cada vez
+4 - MOF - 10 anos - 1931 -1975 crecendo - 10 anos de cada vez
+6 - MJD - 5 anos - Janela 30 anos deslizando - 5 anos de cada vez
+7 - MJD - 10 anos - Janela 30 anos deslizando - 10 anos de cada vez
+
+- Nomes
+MFB = Modelo Fixo Base
+MOF = Modelo de Origem Fixa
+MJD = Modelos de Janelas Deslizantes
+
+- Notação
+MOF(S, I) - S = período simulado / I = Interação 
+MJD(W,S,I) - W = tamanho da janela / S = período simulado / I = Interação
+
+6.2 Formato dos bancos de saída
+- Uma linha por dia (sem 29/fev), 500 colunas de séries sintéticas. Salvo com CSV com
+separador ; e decimal ,.
+
+6.3 Número de séries sintéticas
+Decisão - 500 séries: Literatura indica mínimo de 100, com 500 para resultados mais
+"satisfatórios"
+
+7. SAMS.PY - Seleção Automática de Modelo
+Contexto: O SAMS (Stochastic Analysis, Modeling and Simulation) é um software da
+Colorado State University usado para seleção de modelos estocásticos hidrológicos.
+Neste trabalho, sua lógica foi reimplementada em Python para permitir automação
+completa do loop de calibração.
+
+7.1 Modelos Candidatos
+Decisão — Remover MAR e CARMA da lista original:
+MAR é multivariado — exige múltiplas estações simultâneas. Como o trabalho
+usa apenas a estação União da Vitória, o MAR não se aplica. CARMA foi removido
+pela mesma razão (multivariado contínuo).
+
+7.2 Série de Entrada - DECISÃO CRÍTICA
+Decisão - Todos os modelos recebem a série bruta diária (sem pré-processamento diferenciado):
+
+Problema rejeitado: Pré-processar diferentemente para cada modelo
+(padronizar para ARMA, série bruta para PARMA) favorece artificialmente
+cada modelo no seu próprio terreno — não é uma competição justa.
+
+Decisão adotada: Série bruta para todos. Cada modelo usa sua própria
+estratégia para lidar com sazonalidade:
+    1. ARMA: Ignora sazonalidade, tenta capturar com ordens maiores
+    2. PARMA: Captura sazonlaidade internamente (um ARMA por mês)
+    3. GAR: Captura assimetria + autocorrelação
+
+O AIC penaliza modelos mais complexos naturalmente - se o PARMA precisar de mais
+parâmetros para capturar a sazonalidade, o AIC decide se valre a pena
+
+7.3 Critério de Seleção
+Decisão — AIC como critério principal (BIC registrado como secundário):
+AIC prioriza o melhor ajuste e é menos pragmático que o BIC.
+BIC penaliza mais fortemente modelos complexos — mais conservador.
+Para uma metodologia que busca capturar mudanças de regime, o AIC é mais adequado
+
+7.4 Ordens do ARMA
+Decisão - Limite p=0.3, q=0.3 (15 combinações):
+Teste com p=0..5, q=0..5 (35 combinações) mostrou que ordens superiores a 3
+produzem ganho inferior a 0.003% no AIC (diferença de ~4 pontos num AIC de
+161.000). O limite em 3 é estatisticamente justificável e reduz o tempo
+de calibração à metade.
+
+7.5 GAR - Expectativa de não seleção
+Decisão — Manter GAR por completude, documentar como esperado não vencer:
+O GAR foi desenvolvido para bacias com forte assimetria estrutural
+(ex: semiáridas com longos períodos de seca e cheias explosivas).
+A bacia do Iguaçu tem regime hidrológico relativamente regular,
+tornando improvável a seleção do GAR.
+
+7.6 Paralelização
+    1. Três modelos (ARMA, GAR, PARMA) rodam simultaneamente via ThreadPoolExecutor
+    2. As 15 combinações ARMA rodam sequencialmente dentro do worker
+    3. Os 12 meses do PARMA rodam sequencialmente dentro do worker
+
+7.7 Organização e log
+registrarLog(): Registra ciclo, janela, modelo vencedor, AIC, BIC e tempo. O log
+de modelos vencedores ao longo do tempo é um resultado científico - mostra se
+a estrutra estocástica mais adequada muda entre janelas, o que é diretamente ligado
+á hipótese de não-estacionariedade
+
+estimarTempo(): Após o primeiro ciclo, estima o tempo total restante
