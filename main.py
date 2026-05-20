@@ -14,8 +14,8 @@ def main():
  
     tempo_inicio = time.time()
     print("  HYDRO-SLIDING-WINDOW")
-    print("  Análise de Não-Estacionariedade e Geração")
-    print("  de Séries Sintéticas de Vazão")
+    print("Análise de Não-Estacionariedade e Geração")
+    print("de Séries Sintéticas de Vazão")
  
     # 1 — Carregar dados
     print("\n[1/3] Carregando dados...")
@@ -23,7 +23,7 @@ def main():
     print(f"Registros: {len(df)}")
     print(f"Período: {df['data'].min().date()} → {df['data'].max().date()}")
  
-    # 2 — Análise de não-estacionariedade
+    # 2 — Análise de não-estacionariedade 
     print("\n[2/3] Analisando estacionariedade...")
     testes = NaoEstacionariedade(df)
     testes.rodar()
